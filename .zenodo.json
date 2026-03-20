@@ -1,0 +1,22 @@
+{
+  "title": "Seoul Fire Flood Accessibility",
+  "description": "Publication companion repository for a CEUS submission on flood-stressed fire accessibility, weighted demand, and priority defense corridors in Seoul.",
+  "upload_type": "software",
+  "creators": [
+    {
+      "name": "Choi, Gi Hoon",
+      "affiliation": "Graduate School of Environmental Studies, Seoul National University"
+    },
+    {
+      "name": "Song, Jaemin",
+      "affiliation": "Graduate School of Environmental Studies, Seoul National University"
+    }
+  ],
+  "keywords": [
+    "geospatial analysis",
+    "flood accessibility",
+    "emergency response",
+    "Seoul",
+    "network analysis"
+  ]
+}

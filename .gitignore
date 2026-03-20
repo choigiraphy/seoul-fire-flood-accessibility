@@ -4,6 +4,7 @@
 !.gitignore
 !README.md
 !CITATION.cff
+!.zenodo.json
 !code/
 !code/**
 !data/
