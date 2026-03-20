@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this repository, please cite the manuscript and repository record."
+title: "Seoul Fire Flood Accessibility"
+authors:
+  - family-names: "Choi"
+    given-names: "Gi Hoon"
+  - family-names: "Song"
+    given-names: "Jaemin"
+repository-code: "https://github.com/choigiraphy/seoul-fire-flood-accessibility"
+abstract: "Publication companion repository for a CEUS submission on flood-stressed fire accessibility, weighted demand, and priority defense corridors in Seoul."
+keywords:
+  - geospatial analysis
+  - flood accessibility
+  - emergency response
+  - Seoul
+  - network analysis
+license: "Proprietary"

@@ -1,0 +1,20 @@
+# Ignore everything by default and publish only the curated paper repository.
+*
+
+!.gitignore
+!README.md
+!CITATION.cff
+!code/
+!code/**
+!data/
+!data/**
+!environment/
+!environment/**
+!figures/
+!figures/**
+!manuscript/
+!manuscript/**
+!metadata/
+!metadata/**
+!supplementary/
+!supplementary/**
