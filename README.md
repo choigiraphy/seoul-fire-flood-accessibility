@@ -62,8 +62,13 @@ Python dependencies are listed in:
 
 - The anonymized manuscript is intended for journal peer review.
 - The title page contains author-identifying information and declarations and should not be uploaded as the anonymized manuscript file.
-- A public DOI-based repository link should be inserted into the manuscript data/code availability statements if a Zenodo or OSF archive is created.
+- Zenodo archive DOI: https://doi.org/10.5281/zenodo.19137721
 
 ## Citation
 
 If you use this repository, cite the associated article manuscript and this repository record. A machine-readable citation file is provided as `CITATION.cff`.
+
+
+## Archive DOI
+
+- Zenodo DOI: https://doi.org/10.5281/zenodo.19137721

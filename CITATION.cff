@@ -15,3 +15,8 @@ keywords:
   - Seoul
   - network analysis
 license: "Proprietary"
+doi: "10.5281/zenodo.19137721"
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.19137721
+url: "https://doi.org/10.5281/zenodo.19137721"
