@@ -158,13 +158,7 @@ def structure_multiplier(series: pd.Series) -> pd.Series:
 def build_refined_demand(pop_grid: gpd.GeoDataFrame, buildings: gpd.GeoDataFrame, data_root: Path) -> gpd.GeoDataFrame:
     graph = load_graph(data_root)
     work = buildings.copy()
-    log_area = np.log1p(work["area_proxy"].clip(lower=0))
-    amin = log_area.min()
-    amax = log_area.max()
-    work["area_norm"] = 0.0 if amax == amin else (log_area - amin) / (amax - amin)
-    work["usage_mult"] = usage_multiplier(work["usage_type"])
-    work["structure_mult"] = structure_multiplier(work["structure_type"])
-    work["refine_score"] = (0.35 + 0.65 * work["area_norm"]) * work["usage_mult"] * work["structure_mult"]
+    work["bld_area_raw"] = work["area_proxy"].clip(lower=0).fillna(0.0)
 
     # Avoid an expensive full spatial join by assigning each building centroid to
     # its 250 m population cell directly from projected coordinates.
@@ -180,17 +174,17 @@ def build_refined_demand(pop_grid: gpd.GeoDataFrame, buildings: gpd.GeoDataFrame
     if join.empty:
         raise RuntimeError("No buildings matched the 250m population grid codes.")
 
-    score_sum = join.groupby("250M격자")["refine_score"].sum().rename("score_sum")
-    join = join.merge(score_sum, on="250M격자", how="left")
-    join["weight_share"] = np.where(join["score_sum"] > 0, join["refine_score"] / join["score_sum"], 0.0)
-    join["wx"] = join.geometry.x * join["weight_share"]
-    join["wy"] = join.geometry.y * join["weight_share"]
+    bld_area_sum = join.groupby("250M격자")["bld_area_raw"].sum().rename("bld_area_sum")
+    join = join.merge(bld_area_sum, on="250M격자", how="left")
+    join["geom_weight_share"] = np.where(join["bld_area_sum"] > 0, join["bld_area_raw"] / join["bld_area_sum"], 0.0)
+    join["wx"] = join.geometry.x * join["geom_weight_share"]
+    join["wy"] = join.geometry.y * join["geom_weight_share"]
 
     grid_refined = join.groupby(["250M격자", "행정동코드"], as_index=False).agg(
         pop_count=("pop_count", "first"),
-        mean_refine_score=("refine_score", "mean"),
-        max_refine_score=("refine_score", "max"),
-        area_proxy=("area_proxy", "sum"),
+        building_count=("bld_area_raw", "size"),
+        bld_area_sum=("bld_area_raw", "sum"),
+        area_proxy=("bld_area_raw", "sum"),
         usage_type=("usage_type", dominant_value),
         structure_type=("structure_type", dominant_value),
         x=("wx", "sum"),
@@ -205,27 +199,38 @@ def build_refined_demand(pop_grid: gpd.GeoDataFrame, buildings: gpd.GeoDataFrame
     covered = set(grid_refined["250M격자"].unique())
     fallback = pop_grid[~pop_grid["250M격자"].isin(covered)].copy()
     if not fallback.empty:
-        fallback["mean_refine_score"] = 1.0
-        fallback["max_refine_score"] = 1.0
-        fallback["area_proxy"] = POP_GRID_CELL_M * POP_GRID_CELL_M
+        fallback["building_count"] = 0
+        fallback["bld_area_sum"] = 0.0
+        fallback["area_proxy"] = 0.0
         fallback["usage_type"] = "격자대표"
         fallback["structure_type"] = "미상"
         fallback["geometry"] = fallback["centroid"]
-        fallback = fallback[["250M격자", "행정동코드", "pop_count", "mean_refine_score", "max_refine_score", "area_proxy", "usage_type", "structure_type", "geometry"]]
+        fallback = fallback[["250M격자", "행정동코드", "pop_count", "building_count", "bld_area_sum", "area_proxy", "usage_type", "structure_type", "geometry"]]
     else:
         fallback = gpd.GeoDataFrame(
-            columns=["250M격자", "행정동코드", "pop_count", "mean_refine_score", "max_refine_score", "area_proxy", "usage_type", "structure_type", "geometry"],
+            columns=["250M격자", "행정동코드", "pop_count", "building_count", "bld_area_sum", "area_proxy", "usage_type", "structure_type", "geometry"],
             geometry="geometry",
             crs=TARGET_CRS,
         )
 
     demand = gpd.GeoDataFrame(pd.concat([grid_refined, fallback], ignore_index=True), geometry="geometry", crs=POP_GRID_CRS).to_crs(TARGET_CRS)
-    demand["vulnerability_score"] = 0.6 * demand["mean_refine_score"].fillna(1.0) + 0.4 * demand["max_refine_score"].fillna(1.0)
+    demand["allocated_pop"] = demand["pop_count"]
+    demand["grid_area_m2"] = float(POP_GRID_CELL_M * POP_GRID_CELL_M)
+    demand["bld_floor_area_density"] = demand["bld_area_sum"].fillna(0.0) / demand["grid_area_m2"]
+    demand["bld_intensity_log"] = np.log1p(demand["bld_floor_area_density"].clip(lower=0.0))
+    demand["bld_modifier_raw"] = 1.0 + demand["bld_intensity_log"]
+    total_pop = demand["allocated_pop"].sum()
+    if total_pop > 0:
+        bld_modifier_pw_mean = float(np.average(demand["bld_modifier_raw"], weights=demand["allocated_pop"]))
+    else:
+        bld_modifier_pw_mean = 1.0
+    demand["bld_modifier_pw_mean"] = bld_modifier_pw_mean
+    demand["bld_modifier_rel"] = demand["bld_modifier_raw"] / bld_modifier_pw_mean if bld_modifier_pw_mean else 1.0
+    demand["demand_weight"] = demand["allocated_pop"] * demand["bld_modifier_rel"]
+    demand["vulnerability_score"] = demand["bld_intensity_log"]
     vmin = demand["vulnerability_score"].min()
     vmax = demand["vulnerability_score"].max()
     demand["vulnerability_norm"] = 0.0 if vmax == vmin else (demand["vulnerability_score"] - vmin) / (vmax - vmin)
-    demand["allocated_pop"] = demand["pop_count"]
-    demand["demand_weight"] = demand["pop_count"] * (0.70 + 0.30 * demand["vulnerability_norm"])
 
     x = demand.geometry.x.to_numpy()
     y = demand.geometry.y.to_numpy()
@@ -310,6 +315,10 @@ def corridor_risk(demand: gpd.GeoDataFrame, rp_corridors: pd.DataFrame, data_roo
     edges = edge_geometries(graph)
     edge_weights = assign_edges(demand, data_root)
     merged = rp_corridors.merge(edges[["edge_id", "geometry"]], on="edge_id", how="left").merge(edge_weights, on="edge_id", how="left")
+    # Scenario delay should not be negative once edge penalties are non-decreasing.
+    # Small negative values can survive in precomputed corridor tables, so clip here
+    # before constructing the final demand-weighted prioritization surface.
+    merged["segment_delay_min"] = merged["segment_delay_min"].clip(lower=0.0)
     merged["assigned_demand_weight"] = merged["assigned_demand_weight"].fillna(0.0)
     merged["weighted_delay"] = merged["segment_delay_min"].fillna(0.0) * merged["assigned_demand_weight"]
     for source, target in [("d_choice", "d_choice_norm"), ("d_integration", "d_integration_norm"), ("weighted_delay", "weighted_delay_norm")]:
@@ -317,7 +326,17 @@ def corridor_risk(demand: gpd.GeoDataFrame, rp_corridors: pd.DataFrame, data_roo
         vmin = values.min()
         vmax = values.max()
         merged[target] = 0.0 if vmax == vmin else (values - vmin) / (vmax - vmin)
-    merged["risk_score"] = 0.50 * merged["weighted_delay_norm"] + 0.30 * merged["d_choice_norm"] + 0.20 * merged["d_integration_norm"]
+    merged["operational_block"] = merged["weighted_delay_norm"]
+    merged["structural_block"] = 0.5 * (merged["d_choice_norm"] + merged["d_integration_norm"])
+    merged["risk_score"] = merged["operational_block"] * merged["structural_block"]
+    def _strategic_flag(scores: pd.Series) -> pd.Series:
+        positive = scores[scores > 0]
+        if positive.empty:
+            return pd.Series(False, index=scores.index)
+        threshold = positive.quantile(0.98)
+        return (scores > 0) & (scores >= threshold)
+
+    merged["is_strategic_corridor"] = merged.groupby("scenario")["risk_score"].transform(_strategic_flag).astype(int)
     return gpd.GeoDataFrame(merged, geometry="geometry", crs=TARGET_CRS)
 
 
